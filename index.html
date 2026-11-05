@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>集中してなさい</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500&family=Instrument+Serif&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: #000; color: #fff; overflow: hidden;
+    }
+
+    body {
+      background-image: url(ebg.png);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      display: flex; flex-direction: column;
+      justify-content: space-between;
+      padding: 0;
+      min-height: 100vh;
+    }
+
+    /* 원(눈동자) 레이어 */
+    .stage {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width:  max(100vw, calc(100vh * 16 / 9));
+      height: max(100vh, calc(100vw * 9 / 16));
+      transform: translate(-50%, -50%);   
+      background: transparent;            
+      pointer-events: none;               
+      z-index: 0;
+    }
+
+    .dot {
+      position: absolute;
+      background: #e2e2e2;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);   
+      will-change: transform;
+    }
+
+    /* 타이머 종료 인터랙션: 깜빡임 + 서서히 사라짐 */
+.stage { transition: opacity 0.4s ease; }
+.stage.fadeout { opacity: 0; transition: opacity 3s ease; }
+.stage.blink .dot { animation: dotBlink 0.9s ease-in-out; }
+@keyframes dotBlink {
+  0%   { opacity: 1; }
+  40%  { opacity: 0.08; }
+  100% { opacity: 1; }
+}
+
+    /* 제목 / 타이머 */
+    .title {
+      position: relative;
+      z-index: 1;
+      font-family: 'Noto Serif JP', serif;
+      font-weight: 300;
+      font-size: 7rem;
+      letter-spacing: -0.15em;
+      color: #fff;
+      text-align: center;
+      user-select: none;
+    }
+
+    .bottom-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: flex-start;
+      gap: 2vw;
+    }
+
+    .timer-segment, .timer-colon,
+    .label-kanji, .label-btn {
+      font-family: 'Instrument Serif', serif;
+      font-weight: 400;
+      color: #00e5cc;
+      line-height: 1;
+    }
+
+    .timer-segment, .timer-colon {
+      font-size: 8.5rem;
+      letter-spacing: -0.05em;
+    }
+
+    .timer-segment {
+      cursor: pointer;
+      outline: none;
+      transition: opacity 0.15s;
+    }
+
+    .timer-segment.editing {
+      text-decoration: underline;
+      text-underline-offset: 0.08em;
+      text-decoration-thickness: 3px;
+    }
+
+    .timer-colon { padding: 0 0.02em; user-select: none; }
+
+    .timer-labels {
+      position: fixed;       
+      z-index: 1;
+      bottom: 0;             
+      left: 420px;
+      display: flex; flex-direction: column;
+      align-items: flex-start;
+      gap: 0.2em;
+    }
+
+    .label-kanji {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 1.8rem;
+      letter-spacing: -0.15em;
+      user-select: none;
+    }
+
+    .label-btn {
+      font-size: 2.5rem;
+      letter-spacing: -0.05em;
+      background: none; border: none;
+      cursor: pointer; padding: 0;
+      transition: opacity 0.15s;
+    }
+    .label-btn:hover { opacity: 0.65; }
+
+    /* 언어 전환 버튼*/
+.label-btn.jp {
+  font-family: 'Noto Serif JP', serif;
+  font-size: 1.8rem;
+  letter-spacing: -0.15em;
+}
+
+/* 오른쪽 하단 구석에 고정 */
+.lang-corner {
+  position: fixed;
+  right: 1.5vw;
+  bottom: 1vw;
+  z-index: 1;
+}
+
+/* 커서 문장 */
+.trail {
+  position: fixed;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  font-family: 'Noto Serif JP', serif;   /* 타이틀 일본어 폰트와 동일 */
+  font-weight: 300;
+  font-size: 1rem;                       /* 글자 크기 */
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  animation: trailFade 1.8s ease-out forwards;
+}
+@keyframes trailFade {
+  0%   { opacity: 0;   filter: blur(3px); }
+  15%  { opacity: 0.9; filter: blur(0); }
+  100% { opacity: 0;   filter: blur(2px); }
+}
+
+/* 영어 타이틀 */
+.title.en {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 200;
+  letter-spacing: -0.02em;
+}
+
+    .hidden-input {
+      position: fixed; opacity: 0;
+      pointer-events: none; width: 0; height: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="stage" id="stage"></div>
+
+  <h1 class="title" id="title">ねえ。今集中してないでしょ？</h1>
+
+  <div class="bottom-row">
+    <div id="timer" style="display:flex;align-items:center;">
+      <span class="timer-segment" id="seg-hh" tabindex="0">00</span>
+      <span class="timer-colon">:</span>
+      <span class="timer-segment" id="seg-mm" tabindex="0">00</span>
+      <span class="timer-colon">:</span>
+      <span class="timer-segment" id="seg-ss" tabindex="0">00</span>
+    </div>
+
+    <div class="timer-labels">
+      <span class="label-kanji">集中</span>
+      <button class="label-btn" id="btn-start">start</button>
+      <button class="label-btn" id="btn-reset">reset</button>
+    </div>
+  </div>
+
+  <button class="label-btn jp lang-corner" id="btn-lang">日本語</button>
+  <input class="hidden-input" id="hidden-input" type="number" min="0" />
+
+  <script>
+    const pad = n => String(n).padStart(2, '0');
+
+    const segs = ['seg-hh', 'seg-mm', 'seg-ss'].map(id => document.getElementById(id));
+    const [hh, mm, ss] = segs;
+    const btnStart = document.getElementById('btn-start');
+    const btnReset = document.getElementById('btn-reset');
+    const inp      = document.getElementById('hidden-input');
+
+    let total = 0, saved = total;
+    let timer = null, running = false, editSeg = null;
+
+    const getTotal = () => (+hh.textContent)*3600 + (+mm.textContent)*60 + (+ss.textContent);
+
+    function render(s) {
+      hh.textContent = pad(Math.floor(s / 3600));
+      mm.textContent = pad(Math.floor(s % 3600 / 60));
+      ss.textContent = pad(s % 60);
+    }
+
+    function stop() {
+      clearInterval(timer); running = false; btnStart.textContent = 'start';
+    }
+
+    // 종료 임박 / 종료 시 원 인터랙션 =====
+const BLINK_SEC = 5;   // 끝나기 몇초 전부터 깜빡일지
+
+function blinkDots() {
+  const st = document.getElementById('stage');
+  st.classList.remove('blink');
+  void st.offsetWidth;            // 애니메이션 재시작용 리플로우
+  st.classList.add('blink');
+}
+function fadeOutDots() {
+  const st = document.getElementById('stage');
+  st.classList.remove('blink');
+  st.classList.add('fadeout');
+}
+function resetDots() {
+  const st = document.getElementById('stage');
+  st.classList.remove('blink', 'fadeout');
+}
+
+function start() {
+  if (total <= 0) return;
+  resetDots();
+  running = true; btnStart.textContent = 'stop';
+  timer = setInterval(() => {
+    render(--total);
+    if (total <= 0) { stop(); fadeOutDots(); }
+    else if (total <= BLINK_SEC) blinkDots();   // 매초 한 번씩 깜빡
+  }, 1000);
+}
+    
+
+    btnStart.addEventListener('click', () => running ? stop() : start());
+    btnReset.addEventListener('click', () => { stop(); total = saved = 0; render(0); });
+
+    function beginEdit(seg) {
+      if (running) stop();
+      editSeg = seg;
+      seg.classList.add('editing');
+      inp.max = seg === hh ? 99 : 59;
+      inp.value = +seg.textContent;
+      inp.style.pointerEvents = 'auto';
+      inp.focus(); inp.select();
+    }
+
+    function commitEdit() {
+      if (!editSeg) return;
+      editSeg.classList.remove('editing');
+      let v = parseInt(inp.value, 10);
+      const max = editSeg === hh ? 99 : 59;
+      editSeg.textContent = pad(Math.min(Math.max(isNaN(v) ? 0 : v, 0), max));
+      inp.style.pointerEvents = 'none';
+      editSeg = null;
+      total = saved = getTotal();
+    }
+
+    
+    inp.addEventListener('blur', commitEdit);
+
+    inp.addEventListener('input', () => {
+      if (!editSeg) return;
+      let v = parseInt(inp.value, 10);
+      const max = editSeg === hh ? 99 : 59;
+      if (!isNaN(v)) editSeg.textContent = pad(Math.min(Math.max(v, 0), max));
+    });
+
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') commitEdit();
+      if (e.key === 'Escape') {
+        editSeg?.classList.remove('editing');
+        inp.style.pointerEvents = 'none';
+        editSeg = null;
+      }
+    });
+
+    segs.forEach(seg => {
+      seg.addEventListener('click', () => beginEdit(seg));
+      seg.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') return beginEdit(seg);
+        const max = seg === hh ? 99 : 59;
+        if (e.key === 'ArrowUp')   { e.preventDefault(); seg.textContent = pad((+seg.textContent + 1) % (max + 1)); total = saved = getTotal(); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); seg.textContent = pad(((+seg.textContent - 1) + max + 1) % (max + 1)); total = saved = getTotal(); }
+      });
+    });
+
+    // 타이틀 언어 전환 =====
+const titleEl = document.getElementById('title');
+const btnLang = document.getElementById('btn-lang');
+let isEnglish = false;
+
+btnLang.addEventListener('click', () => {
+  isEnglish = !isEnglish;
+  titleEl.textContent = isEnglish ? 'Focus on your work.' : 'ねえ。今集中してないでしょ？';
+  titleEl.classList.toggle('en', isEnglish);
+  btnLang.textContent = isEnglish ? 'english' : '日本語';
+  btnLang.classList.toggle('jp', !isEnglish);
+});
+
+    //  원 좌표 =====
+    const W = 2576, H = 1449;
+
+    const dots = [
+      // 왼쪽 열
+      { x: 70,   y: 621,  d: 34 },
+      { x: 74,   y: 867,  d: 22 },
+      { x: 455,  y: 940,  d: 74 },
+
+      // 왼쪽 중간
+      { x: 401,  y: 477,  d: 40 },
+      { x: 701,  y: 438,  d: 44 },
+      { x: 753,  y: 658,  d: 24 },
+      { x: 784,  y: 928,  d: 42 },
+
+      // 중앙 대형
+      { x: 1310, y: 754,  d: 112 },
+
+      // 하단
+      { x: 1056, y: 1260, d: 60 },
+      { x: 1437, y: 1261, d: 32 },
+
+      // 오른쪽 중간
+      { x: 1731, y: 394,  d: 28 },
+      { x: 1733, y: 783,  d: 42 },
+      { x: 1714, y: 1145, d: 42 },
+      { x: 2108, y: 510,  d: 48 },
+      { x: 2165, y: 1008, d: 66 },
+
+      // 오른쪽 끝
+      { x: 2480, y: 628,  d: 20 },
+      { x: 2531, y: 933,  d: 44 },
+    ];
+
+    const stage = document.getElementById('stage');
+
+    // 조절용 설정값 =====
+    const MOVE    = 0.50;  // 최대 이동거리 - 클수록 많이 움직임
+    const FOLLOW  = 0.5;  // 따라오는 부드러움 (0~1, 작을수록 느리고 부드러움)
+    const FALLOFF = 300;   // 커서가 이 거리(px) 이상 멀어지면 최대치로 움직임
+
+    // 원 생성
+    const items = dots.map(({ x, y, d }) => {
+      const el = document.createElement('div');
+      el.className = 'dot';
+      el.style.left   = (x / W * 100) + '%';
+      el.style.top    = (y / H * 100) + '%';
+      el.style.width  = (d / W * 100) + '%';
+      el.style.aspectRatio = '1 / 1';
+      stage.appendChild(el);
+      return { el, x, y, d, cx: 0, cy: 0 };  // cx, cy = 현재 이동량(px)
+    });
+
+    // 마우스 위치 추적
+    let mouse = null;
+    // 커서 경로 문장 =====
+const TRAIL_TEXT  = '集中しなさい。';
+const TRAIL_START = 10;    
+const TRAIL_GAP   = 20;   // 문장 간격
+const NO_TRAIL_SELECTOR = '#timer, .timer-labels, .lang-corner';  // 문장 안 생길 영역
+
+let moveCount = 0, lastTrail = null;
+
+function spawnTrail(x, y) {
+  const el = document.createElement('span');
+  el.className = 'trail';
+  el.textContent = TRAIL_TEXT;
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+window.addEventListener('pointermove', e => {
+  mouse = { x: e.clientX, y: e.clientY };
+
+  moveCount++;
+
+  if (e.target.closest(NO_TRAIL_SELECTOR)) return;
+  if (moveCount >= TRAIL_START &&
+      (!lastTrail || Math.hypot(e.clientX - lastTrail.x, e.clientY - lastTrail.y) >= TRAIL_GAP)) {
+    spawnTrail(e.clientX, e.clientY);
+    lastTrail = { x: e.clientX, y: e.clientY };
+  }
+});
+document.documentElement.addEventListener('mouseleave', () => { mouse = null; lastTrail = null; });
+
+    // 매 프레임 업데이트
+    function tick() {
+      const rect  = stage.getBoundingClientRect();
+      const scale = rect.width / W;   
+
+      items.forEach(it => {
+        let tx = 0, ty = 0;
+
+        if (mouse) {
+          const px = rect.left + it.x * scale;   // 원 중심의 화면 좌표
+          const py = rect.top  + it.y * scale;
+          const dx = mouse.x - px;
+          const dy = mouse.y - py;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist > 0.001) {
+            const strength = Math.min(1, dist / FALLOFF);
+            const max = it.d * scale * MOVE;     // 이 원의 최대 이동거리
+            tx = (dx / dist) * max * strength;
+            ty = (dy / dist) * max * strength;
+          }
+        }
+
+        // easing
+        it.cx += (tx - it.cx) * FOLLOW;
+        it.cy += (ty - it.cy) * FOLLOW;
+
+        it.el.style.transform =
+          `translate(calc(-50% + ${it.cx}px), calc(-50% + ${it.cy}px))`;
+      });
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    render(total);
+  </script>
+</body>
+</html>
